@@ -66,7 +66,15 @@ def _wcel_dn(rnc, wbts, wcel):
 # ---------------------------------------------------------------------------
 
 class Network:
-    NEEDED_SHEETS = ['RNC', 'WBTS', 'WCEL', 'WNCEL']
+    NEEDED_SHEETS = [
+        'RNC',
+        'WBTS',
+        'WCEL',
+        'WNCEL',
+        'WNBTS',
+        'ADJL',
+        'LNCEL_FDD',
+    ]
 
     def __init__(self, sheets):
         for sn in self.NEEDED_SHEETS:
@@ -105,6 +113,43 @@ class Network:
             key = (mrbts, wncel)
             if key not in self.wncel_by_mrbts_wcel:
                 self.wncel_by_mrbts_wcel[key] = r
+
+        # WNBTS — map WCDMA RNC/WBTS identifiers to the LTE MRBTS.
+        # The first record is retained if duplicate mappings are present.
+        self.wnbts_list = sheets.get('WNBTS', [])
+        self.mrbts_by_rnc_wbts = {}
+        for r in self.wnbts_list:
+            rnc = get(r, 'Item-rncConfigList-identifier')
+            wbts = get(r, 'wbtsId')
+            mrbts = get(r, 'MRBTS')
+            if not (rnc and wbts and mrbts):
+                continue
+            key = (rnc, wbts)
+            if key not in self.mrbts_by_rnc_wbts:
+                self.mrbts_by_rnc_wbts[key] = mrbts
+
+        # ADJL — adjacency records indexed by their WCDMA cell identity.
+        self.adjl_list = sheets.get('ADJL', [])
+        self.adjl_by_wcel = defaultdict(list)
+        for r in self.adjl_list:
+            rnc = get(r, 'RNC')
+            wbts = get(r, 'WBTS')
+            wcel = get(r, 'WCEL')
+            if not (rnc and wbts and wcel):
+                continue
+            self.adjl_by_wcel[(rnc, wbts, wcel)].append(r)
+
+        # LNCEL_FDD — distinct LTE downlink EARFCNs per MRBTS and network-wide.
+        self.lncel_fdd_list = sheets.get('LNCEL_FDD', [])
+        self.lte_earfcns_by_mrbts = defaultdict(set)
+        self.all_lte_earfcns = set()
+        for r in self.lncel_fdd_list:
+            mrbts = get(r, 'MRBTS')
+            earfcn = to_num(get(r, 'earfcnDL'), default=None)
+            if not mrbts or earfcn is None:
+                continue
+            self.lte_earfcns_by_mrbts[mrbts].add(earfcn)
+            self.all_lte_earfcns.add(earfcn)
 
 
 # ---------------------------------------------------------------------------
